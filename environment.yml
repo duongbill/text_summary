@@ -10,3 +10,4 @@ dependencies:
       - beautifulsoup4
       - gradio
       - ollama
+# pip install 'accelerate>=0.26.0'
