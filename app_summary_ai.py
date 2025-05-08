@@ -9,7 +9,62 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.metrics.pairwise import cosine_similarity
 from transformers import T5Tokenizer, T5ForConditionalGeneration
+import time
 
+# Thiết lập trang
+st.set_page_config(
+    page_title="AI Text Summarizer",
+    page_icon="📝",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# CSS tùy chỉnh
+st.markdown("""
+    <style>
+    .main {
+        padding: 1rem;
+    }
+    .stTextArea textarea {
+        font-size: 14px;
+    }
+    .css-1d391kg {
+        padding: 1rem 0.5rem;
+    }
+    .stProgress .st-bo {
+        background-color: #4CAF50;
+    }
+    .stMarkdown {
+        font-size: 14px;
+    }
+    .stButton button {
+        padding: 0.5rem 2rem;
+        width: auto;
+        min-width: 120px;
+        margin: 1rem auto;
+        display: block;
+        border-radius: 20px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+    }
+    .stButton button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+    div[data-testid="stSidebar"] {
+        padding: 1rem 0.5rem;
+    }
+    div[data-testid="stButton"] {
+        text-align: center;
+        width: 100%;
+        display: flex;
+        justify-content: center;
+    }
+    div[data-testid="stButton"] > button {
+        margin: 1rem auto;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 # Tải punkt
 try:
@@ -129,21 +184,99 @@ def hybrid_summarization(text, model, tokenizer, num_summary_sentences=3):
 
 # --- Giao diện Streamlit ---
 def main():
+    # Sidebar
+    with st.sidebar:
+        st.title("⚙️ Cài đặt")
+        st.markdown("---")
+        
+        # Cấu hình tóm tắt
+        st.subheader("Cấu hình tóm tắt")
+        num_sentences = st.slider(
+            "Số câu trong bản tóm tắt",
+            min_value=1,
+            max_value=10,
+            value=3,
+            help="Số lượng câu bạn muốn trong bản tóm tắt"
+        )
+        
+        # Hiển thị thông tin
+        st.markdown("---")
+        st.subheader("ℹ️ Thông tin")
+        st.markdown("""
+        Ứng dụng sử dụng kết hợp 3 phương pháp:
+        - 🤖 Mô hình học sâu (T5)
+        - 📊 Phân cụm (Clustering)
+        - 🔍 Tìm kiếm heuristic
+        """)
+
+    # Main content
     st.title("📄 Tóm tắt văn bản bằng AI")
-    st.write("Tích hợp Heuristic + Phân cụm + Mô hình học sâu để tóm tắt tối ưu")
+    st.markdown("Ứng dụng này giúp bạn tóm tắt văn bản một cách thông minh.")
 
-    text_input = st.text_area("✍️ Nhập đoạn văn bản cần tóm tắt:", height=200)
+    # Input area
+    col1, col2 = st.columns([3, 2])
+    with col1:
+        text_input = st.text_area(
+            "✍️ Nhập đoạn văn bản cần tóm tắt:",
+            height=200,
+            help="Nhập hoặc dán văn bản cần tóm tắt vào đây"
+        )
+        
+        # Process button - centered within the input column
+        if st.button("🚀 Tóm tắt"):
+            if not text_input.strip():
+                st.warning("⚠️ Vui lòng nhập đoạn văn bản.")
+                return
 
-    if st.button("🚀 Tóm tắt"):
-        if not text_input.strip():
-            st.warning("Vui lòng nhập đoạn văn bản.")
-            return
-
-        model, tokenizer = load_finetuned_model()
-        summary = hybrid_summarization(text_input, model, tokenizer)
-
-        st.subheader("📝 Bản tóm tắt:")
-        st.write(summary)
+            # Progress bar
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            # Load model
+            status_text.text("🔄 Đang tải mô hình...")
+            model, tokenizer = load_finetuned_model()
+            progress_bar.progress(20)
+            
+            # Process text
+            status_text.text("⚙️ Đang xử lý văn bản...")
+            time.sleep(0.5)
+            progress_bar.progress(50)
+            
+            # Generate summary
+            status_text.text("📝 Đang tạo bản tóm tắt...")
+            summary = hybrid_summarization(text_input, model, tokenizer, num_sentences)
+            progress_bar.progress(100)
+            
+            # Display results
+            status_text.text("✅ Hoàn thành!")
+            time.sleep(0.5)
+            
+            # Results section
+            st.markdown("---")
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                st.subheader("📝 Bản tóm tắt:")
+                st.markdown(f"<div style='background-color: #f0f2f6; padding: 15px; border-radius: 8px; font-size: 14px;'>{summary}</div>", unsafe_allow_html=True)
+            
+            with col2:
+                st.subheader("📊 Thống kê:")
+                original_length = len(text_input.split())
+                summary_length = len(summary.split())
+                compression_ratio = (1 - summary_length/original_length) * 100
+                
+                st.metric("Độ dài văn bản gốc", f"{original_length} từ")
+                st.metric("Độ dài bản tóm tắt", f"{summary_length} từ")
+                st.metric("Tỷ lệ nén", f"{compression_ratio:.1f}%")
+    
+    with col2:
+        st.markdown("### 📋 Hướng dẫn")
+        st.markdown("""
+        1. Nhập hoặc dán văn bản
+        2. Điều chỉnh số câu tóm tắt
+        3. Nhấn nút 'Tóm tắt'
+        4. Xem kết quả
+        """)
 
 if __name__ == "__main__":
     main()
