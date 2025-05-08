@@ -1,4 +1,4 @@
-import streamlit as st
+import streamlit as st  # type: ignore
 import nltk
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -8,32 +8,51 @@ from sklearn.metrics import silhouette_score
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.metrics.pairwise import cosine_similarity
-from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM
+from transformers import T5Tokenizer, T5ForConditionalGeneration
 
-# Tải punkt nếu chưa có
+
+# Tải punkt
 try:
     nltk.data.find('tokenizers/punkt')
 except LookupError:
     nltk.download('punkt')
 
 # Danh sách các từ nối cần loại bỏ
-stopwords = ["hay là", "sau đó", "vì vậy", "cho nên", "tuy nhiên", "mặc dù", "do đó", "vì thế", "thế nhưng"]
+stopwords = [
+    "trước khi", "sau khi", "trong khi", "khi mà", "lúc đó", "bây giờ", "hiện tại", "lúc này", "ngay lập tức",
+    "bởi vì", "vì", "do", "bởi", "kết quả là", "dẫn đến", "vì lẽ đó", "chính vì thế", "từ đó",
+    "nhưng", "nhưng mà", "tuy", "mặc dù vậy", "trái lại", "ngược lại", "tuy vậy", "dù vậy", "tuy thế",
+    "ngoài ra", "thêm vào đó", "hơn nữa", "không những thế", "bên cạnh đó", "cũng như", "đồng thời",
+    "nếu", "nếu như", "giả sử", "với điều kiện", "trong trường hợp", "miễn là", "cho dù", "dù cho",
+    "để", "nhằm", "với mục đích", "nhằm mục đích", "hầu", "để mà", "nhằm mục tiêu",
+    "giống như", "tương tự", "cũng giống", "khác với", "so với", "hơn", "kém", "như là",
+    "hay là", "sau đó", "vì vậy", "cho nên", "tuy nhiên", "mặc dù", "do đó", "vì thế", "thế nhưng",
+    "bên cạnh đó", "ngoài ra", "đồng thời", "trong khi đó", "hơn nữa", "có thể nói",
+    "mặt khác", "từ đó", "trên thực tế", "kết luận lại", "cụ thể là", "nói chung",
+    "nhìn chung", "nói cách khác", "tóm lại", "từ trước đến nay", "về cơ bản", "thực ra",
+    "điều đó cho thấy", "như vậy", "kết quả là", "suy ra", "nói tóm lại"
+]
 
-# Hàm loại bỏ các từ nối
-def remove_stopwords(sentences):
-    return [sentence for sentence in sentences if not any(stopword in sentence for stopword in stopwords)]
-
-# --- Tóm tắt phân cụm ---
+# --- Tiền xử lý ---
 def tokenize_sentences(text):
     return nltk.sent_tokenize(text)
+
+def remove_stopwords(sentences):
+    cleaned_sentences = []
+    for sentence in sentences:
+        cleaned_sentence = sentence
+        for stopword in stopwords:
+            cleaned_sentence = cleaned_sentence.replace(stopword, "")
+        cleaned_sentences.append(cleaned_sentence)
+    return cleaned_sentences
 
 def encode_sentences(sentences):
     vectorizer = TfidfVectorizer()
     return vectorizer.fit_transform(sentences)
 
+# --- Phân cụm ---
 def find_optimal_clusters(sentence_vectors, max_k=8):
     distortions, silhouette_scores, K_valid = [], [], []
-
     for k in range(2, max_k + 1):
         if k >= sentence_vectors.shape[0]:
             break
@@ -43,7 +62,6 @@ def find_optimal_clusters(sentence_vectors, max_k=8):
         distortions.append(kmeans.inertia_)
         silhouette_scores.append(silhouette_score(sentence_vectors, labels))
         K_valid.append(k)
-
     return K_valid, distortions, silhouette_scores
 
 def cluster_sentences(sentence_vectors, num_clusters):
@@ -56,10 +74,10 @@ def summarize_by_clustering(sentences, kmeans):
     summary = []
     for cluster in set(labels):
         indices = [i for i, label in enumerate(labels) if label == cluster]
-        summary.append(sentences[indices[0]])  # Câu đại diện
+        summary.append(sentences[indices[0]])  # Câu đại diện mỗi cụm
     return ' '.join(summary)
 
-# --- Tóm tắt Heuristic Search (TF-IDF + Cosine Similarity) ---
+# --- Heuristic Search ---
 def compute_tfidf(sentences):
     vectorizer = TfidfVectorizer()
     return vectorizer.fit_transform(sentences)
@@ -68,102 +86,64 @@ def compute_cosine_similarity(tfidf_matrix):
     return cosine_similarity(tfidf_matrix, tfidf_matrix)
 
 def heuristic_search(sentences, cosine_sim, num_summary_sentences=3):
-    sentence_scores = cosine_sim.sum(axis=1)  # Tổng điểm cosine cho mỗi câu
-    ranked_sentences = sentence_scores.argsort()[::-1]  # Sắp xếp câu theo điểm số giảm dần
+    sentence_scores = cosine_sim.sum(axis=1)
+    ranked_sentences = sentence_scores.argsort()[::-1]
     summary = [sentences[i] for i in ranked_sentences[:num_summary_sentences]]
     return ' '.join(summary)
 
-# --- Tóm tắt học sâu ---
+# --- Mô hình học sâu ---
 @st.cache_resource
-def load_finetuned_model(model_path="duong-ai/bart-finetuned-summary"):
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_path)
-    return pipeline("summarization", model=model, tokenizer=tokenizer)
+def load_finetuned_model(model_path="duonggbill/dbill-model-summary"):  # <-- dùng Hugging Face model
+    tokenizer = T5Tokenizer.from_pretrained(model_path)
+    model = T5ForConditionalGeneration.from_pretrained(model_path)
+    return model, tokenizer
 
-def summarize_with_bart(text, model):
-    result = model(text, max_length=45, min_length=10, do_sample=False)
-    return result[0]['summary_text']
+def summarize_with_t5(text, model, tokenizer):
+    input_ids = tokenizer.encode("summarize: " + text, return_tensors="pt", max_length=1024, truncation=True)
+    summary_ids = model.generate(input_ids, max_length=150, min_length=80, length_penalty=2.0, num_beams=4, early_stopping=True)
+    return tokenizer.decode(summary_ids[0], skip_special_tokens=True)
 
-# --- Vẽ cụm ---
-def plot_clusters(vectors, labels, method="pca"):
-    reducer = PCA(n_components=2) if method == "pca" else TSNE(n_components=2, random_state=42)
-    reduced = reducer.fit_transform(vectors.toarray())
-    plt.figure(figsize=(8, 5))
-    sns.scatterplot(x=reduced[:,0], y=reduced[:,1], hue=labels, palette="tab10")
-    plt.title(f"Biểu đồ cụm theo {method.upper()}")
-    st.pyplot(plt.gcf())
+# --- Tóm tắt kết hợp ---
+def hybrid_summarization(text, model, tokenizer, num_summary_sentences=3):
+    sentences = tokenize_sentences(text)
+    cleaned_sentences = remove_stopwords(sentences)
 
-# --- Streamlit App ---
+    if len(cleaned_sentences) < num_summary_sentences:
+        return "Văn bản quá ngắn để tóm tắt."
+
+    sentence_vectors = encode_sentences(cleaned_sentences)
+    _, _, silhouette_scores = find_optimal_clusters(sentence_vectors)
+    num_clusters = silhouette_scores.index(max(silhouette_scores)) + 2 if silhouette_scores else 1
+    kmeans = cluster_sentences(sentence_vectors, num_clusters)
+    clustered_summary = summarize_by_clustering(sentences, kmeans)
+
+    # Tóm tắt heuristic từ kết quả phân cụm
+    heuristic_sentences = tokenize_sentences(clustered_summary)
+    cleaned = remove_stopwords(heuristic_sentences)
+    tfidf_matrix = compute_tfidf(cleaned)
+    cosine_sim = compute_cosine_similarity(tfidf_matrix)
+    selected = heuristic_search(heuristic_sentences, cosine_sim, num_summary_sentences)
+
+    # Đưa vào mô hình học sâu để sinh bản tóm tắt cuối cùng
+    return summarize_with_t5(selected, model, tokenizer)
+
+# --- Giao diện Streamlit ---
 def main():
-    st.title("📄 Tóm tắt văn bản bằng AI (TF-IDF + Học sâu)")
-    st.write("Tóm tắt văn bản bằng KMeans và mô hình học sâu fine-tuned (BART/T5)")
+    st.title("📄 Tóm tắt văn bản bằng AI")
+    st.write("Tích hợp Heuristic + Phân cụm + Mô hình học sâu để tóm tắt tối ưu")
 
-    text_input = st.text_area("✍️ Nhập đoạn văn bản cần tóm tắt:")
+    text_input = st.text_area("✍️ Nhập đoạn văn bản cần tóm tắt:", height=200)
 
     if st.button("🚀 Tóm tắt"):
         if not text_input.strip():
             st.warning("Vui lòng nhập đoạn văn bản.")
             return
 
-        sentences = tokenize_sentences(text_input)
+        model, tokenizer = load_finetuned_model()
+        summary = hybrid_summarization(text_input, model, tokenizer)
 
-        # Loại bỏ các từ nối
-        sentences = remove_stopwords(sentences)
-        
-        if len(sentences) < 3:
-            st.warning("Văn bản cần ít nhất 3 câu để thực hiện phân cụm.")
-            return
-
-        vectors = encode_sentences(sentences)
-        max_k = min(8, len(sentences))
-        K, distortions, silhouette_scores = find_optimal_clusters(vectors, max_k)
-
-        if not K:
-            st.error("Không tìm được cụm hợp lệ.")
-            return
-
-        # Biểu đồ Elbow + Silhouette
-        fig, ax = plt.subplots(1, 2, figsize=(12, 4))
-        ax[0].plot(K, distortions, marker='o')
-        ax[0].set_title("Elbow Method")
-        ax[0].set_xlabel("Số cụm")
-        ax[0].set_ylabel("Distortion")
-
-        ax[1].plot(K, silhouette_scores, marker='x', color='green')
-        ax[1].set_title("Silhouette Score")
-        ax[1].set_xlabel("Số cụm")
-        ax[1].set_ylabel("Score")
-
-        st.pyplot(fig)
-
-        optimal_k = K[silhouette_scores.index(max(silhouette_scores))]
-        st.info(f"✅ Số cụm tối ưu: {optimal_k}")
-
-        kmeans = cluster_sentences(vectors, num_clusters=optimal_k)
-        summary = summarize_by_clustering(sentences, kmeans)
-        st.subheader("📚 Bản tóm tắt theo phân cụm:")
+        st.subheader("📝 Bản tóm tắt:")
         st.write(summary)
-
-        # PCA/TSNE
-        if st.checkbox("📊 Hiển thị cụm nội dung"):
-            method = st.selectbox("Phương pháp giảm chiều:", ["pca", "tsne"])
-            plot_clusters(vectors, kmeans.labels_, method=method)
-
-        # Tóm tắt siêu ngắn
-        if st.checkbox("✨ Tạo bản tóm tắt siêu ngắn (học sâu)"):
-
-            # Heuristic Search (TF-IDF + Cosine Similarity)
-            tfidf_matrix = compute_tfidf(sentences)
-            cosine_sim = compute_cosine_similarity(tfidf_matrix)
-            heuristic_summary = heuristic_search(sentences, cosine_sim)
-            st.subheader("📚 Tóm tắt bằng Heuristic Search:")
-            st.write(heuristic_summary)
-
-            with st.spinner("Đang chạy mô hình học sâu..."):
-                model = load_finetuned_model()
-                short_summary = summarize_with_bart(text_input, model)
-                st.success("📝 Tóm tắt siêu ngắn:")
-                st.write(short_summary)
 
 if __name__ == "__main__":
     main()

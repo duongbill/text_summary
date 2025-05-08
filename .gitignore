@@ -3,7 +3,4 @@ data/*
 .venv/
 __pycache__/
 env/
-fine_tuned_t5/model.safetensors
-results/checkpoint-1250/optimizer.pt
-results/checkpoint-1250/model.safetensors
-results/checkpoint-1250/optimizer.pt
+model-summary/
