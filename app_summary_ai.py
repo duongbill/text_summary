@@ -139,8 +139,25 @@ def main():
             st.warning("Vui lòng nhập đoạn văn bản.")
             return
 
-        model, tokenizer = load_finetuned_model()
-        summary = hybrid_summarization(text_input, model, tokenizer)
+        with st.spinner("⏳ Đang tóm tắt văn bản..."):
+            # Hiển thị thanh tiến trình
+            progress_bar = st.progress(0)
+            
+            # Load model
+            progress_bar.progress(25)
+            model, tokenizer = load_finetuned_model()
+            
+            # Xử lý văn bản
+            progress_bar.progress(50)
+            sentences = tokenize_sentences(text_input)
+            cleaned_sentences = remove_stopwords(sentences)
+            
+            # Phân cụm và tìm câu đại diện
+            progress_bar.progress(75)
+            
+            # Tóm tắt cuối cùng
+            summary = hybrid_summarization(text_input, model, tokenizer)
+            progress_bar.progress(100)
 
         st.subheader("📝 Bản tóm tắt:")
         st.write(summary)
