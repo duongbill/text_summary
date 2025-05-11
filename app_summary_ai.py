@@ -104,12 +104,24 @@ def summarize_with_t5(text, model, tokenizer):
     return tokenizer.decode(summary_ids[0], skip_special_tokens=True)
 
 # --- Tóm tắt kết hợp ---
-def hybrid_summarization(text, model, tokenizer, num_summary_sentences=3):
+def hybrid_summarization(text, model, tokenizer, num_summary_sentences=None):
     sentences = tokenize_sentences(text)
     cleaned_sentences = remove_stopwords(sentences)
 
-    if len(cleaned_sentences) < num_summary_sentences:
+    if len(cleaned_sentences) < 2:
         return "Văn bản quá ngắn để tóm tắt."
+
+    # --- Xác định số câu tóm tắt dựa trên độ dài ---
+    if num_summary_sentences is None:
+        total_sentences = len(cleaned_sentences)
+        if total_sentences <= 5:
+            num_summary_sentences = 1
+        elif total_sentences <= 10:
+            num_summary_sentences = 2
+        elif total_sentences <= 20:
+            num_summary_sentences = 3
+        else:
+            num_summary_sentences = min(5, total_sentences // 4)
 
     sentence_vectors = encode_sentences(cleaned_sentences)
     _, _, silhouette_scores = find_optimal_clusters(sentence_vectors)
